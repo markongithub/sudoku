@@ -231,7 +231,7 @@ indicesAreSameColumn (x:y:xs) = if (x `mod` 9 == y `mod` 9) then indicesAreSameC
 indicesAreSameBox :: [Int] -> Maybe Int
 indicesAreSameBox [] = error "indicesAreSameBox on empty list"
 indicesAreSameBox indices = let
-  (x:xs) = map boxForIndex xs
+  (x:xs) = map boxForIndex indices
   in if (all (== x) xs) then Just x else Nothing
 
 
