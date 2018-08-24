@@ -339,11 +339,6 @@ indicesAreSameBox indices = let
   (x:xs) = map boxForIndex indices
   in if (all (== x) xs) then Just (HouseID Box x) else Nothing
 
---indicesAreSameHouse :: HouseType -> [Int] -> Maybe HouseID
---indicesAreSameHouse Row = indicesAreSameRow
---indicesAreSameHouse Column = indicesAreSameColumn
---indicesAreSameHouse Box = indicesAreSameBox
-
 indicesAreSameRowOrColumn :: [Int] -> Maybe HouseID
 indicesAreSameRowOrColumn indices = case indicesAreSameRow indices of
   Just r -> Just r
