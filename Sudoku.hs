@@ -294,20 +294,6 @@ updateBoardUsingTable board (NineSquareData dTable indexSets h) = let
   afterIndexSets = foldl (updateBoardUsingIndexSet h) afterHiddenSingles (Map.toList indexSets)
   in afterIndexSets
 
--- updateBoardFromLockedCandidates :: Board -> NineSquareData -> Board
--- updateBoardFromLockedCandidates board (NineSquareData dTable _ hType) = let
-
--- what can you do with a locked candidate
--- you would need the list of indices to affect
--- and the list of indices NOT to affect
--- and the possibility to eliminate
--- so if you have a box and you notice all the 2s are in column 4
--- you want to eliminate all the 2s in column 4 EXCEPT THOSE INDICES
--- so you would have [(2,fromList [58,67] and (2,Just 4) and Column?
--- then you'd figure out all the indices in column 4 minus [58,67]
--- and eliminate the 2s from those indices using eliminateFromIndices
-
-
 updateBoardUsingIndices :: Board -> [Index] -> Board
 updateBoardUsingIndices board indices = updateBoardUsingTable board (makeTableFromBoardSquares board indices)
 
