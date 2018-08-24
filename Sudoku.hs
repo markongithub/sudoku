@@ -128,7 +128,7 @@ testPuzzleRows2 = ["  46     ",
 testPuzzleRows = "004300209005009001070060043006002087190007400050083000600000105003508690042910300"
 
 testBoard = parseBoard testPuzzleRows
-testProgress = snd $ iterateUntilStable performAllOperations testBoard
+testProgress = tryToSolve testBoard
 
 parseRows :: [String] -> Board
 parseRows rows = parseBoard $ concat rows
@@ -146,8 +146,8 @@ fixSinglePossibility sq = case sq of
   (Possibilities s) -> if (Set.size s == 1) then Known (Set.findMin s) else sq
   _                 -> sq
 
-reduceFromSquare :: Board -> Int -> Board
-reduceFromSquare b i = let
+reduceFromKnownSquare :: Board -> Int -> Board
+reduceFromKnownSquare b i = let
   newBoard = b//[(i, fixSinglePossibility (b!i))]
   neighbors = map rowColIndex $ allNeighbors $ indexRowCol i
   in case newBoard!i of
@@ -161,8 +161,8 @@ eliminateFromIndices board possibility indices = let
   allUpdates = map makeUpdate indices
   in board//allUpdates
 
-reduceFromAllSquares :: Board -> Board
-reduceFromAllSquares b = foldl reduceFromSquare b [0..80]
+initialReduceFromKnown :: Board -> Board
+initialReduceFromKnown b = foldl reduceFromKnownSquare b [0..80]
 
 iterateUntilStable :: Eq a => (a -> a) -> a -> (Int, a)
 iterateUntilStable f x = iterateUntilStable0 f x 1
@@ -270,7 +270,7 @@ updateBoardUsingIndexSet house board (indices, possibilities) = let
 updateBoardUsingEntry :: HouseID -> Board -> (Possibility, Set Index) -> Board
 updateBoardUsingEntry house b (possibility, set) = case (Set.size set) of
   0 -> error "How did I get a set of size zero here?"
-  1 -> reduceFromSquare (b//[(Set.findMin set, Known possibility)]) (Set.findMin set)
+  1 -> reduceFromKnownSquare (b//[(Set.findMin set, Known possibility)]) (Set.findMin set)
   _ -> reduceLockedCandidates b (possibility, set) house
 
 reduceLockedCandidates :: Board -> (Possibility, Set Index) -> HouseID -> Board
@@ -320,8 +320,8 @@ updateBoardUsingHouse board house = updateBoardUsingTable board (makeTableFromHo
 updateBoardUsingAllHouses :: Board -> Board
 updateBoardUsingAllHouses board = foldl updateBoardUsingHouse board allHouses
 
-performAllOperations :: Board -> Board
-performAllOperations = reduceFromAllSquares . updateBoardUsingAllHouses
+tryToSolve :: Board -> Board
+tryToSolve = snd . (iterateUntilStable updateBoardUsingAllHouses) . initialReduceFromKnown
 
 indicesAreSameRow :: [Int] -> Maybe HouseID
 indicesAreSameRow [] = error "indicesAreSameRow on empty list"
