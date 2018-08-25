@@ -50,9 +50,11 @@ boxMates (RowCol r c) = let
   in [ RowCol r1 c1 | r1<-boxRows, c1<-boxColumns, (r1, c1) /= (r, c) ]
 
 -- this will have four dupes and I don't care
-allNeighbors :: RowCol -> [RowCol]
-allNeighbors rc = concat [rowLeft rc, rowRight rc, columnUp rc, columnDown rc,
-                          boxMates rc]
+allIndexNeighbors :: Index -> [Index]
+allIndexNeighbors i = filter (/= i) $ concat
+  [ indicesForRow (rowForIndex i)
+  , indicesForColumn (columnForIndex i)
+  , indicesForBox (boxForIndex i)]
 
 eliminatePossibility :: Possibility -> Square -> Square
 eliminatePossibility i rc = case rc of
@@ -69,6 +71,12 @@ rowColIndex (RowCol r c) = (9 * r) + c
 
 indexRowCol :: Int -> RowCol
 indexRowCol i = assert ((i >= 0) && (i < 81)) (RowCol (i `div` 9) (i `mod` 9))
+
+rowForIndex :: Index -> Int
+rowForIndex i = i `div` 9
+
+columnForIndex :: Index -> Int
+columnForIndex i = i `mod` 9
 
 showSquare :: Square -> String
 showSquare (Known i) = show i
@@ -149,7 +157,7 @@ fixSinglePossibility sq = case sq of
 reduceFromKnownSquare :: Board -> Int -> Board
 reduceFromKnownSquare b i = let
   newBoard = b//[(i, fixSinglePossibility (b!i))]
-  neighbors = map rowColIndex $ allNeighbors $ indexRowCol i
+  neighbors = allIndexNeighbors i
   in case newBoard!i of
     Known knownValue -> eliminateFromIndices newBoard knownValue neighbors
     _                -> newBoard
