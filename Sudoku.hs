@@ -276,14 +276,6 @@ updateBoardUsingTable board (NineSquareData dTable indexSets h) = let
                    (Map.toList indexSets)
   in afterIndexSets
 
-updateBoardUsingIndices :: Board -> [Index] -> Board
-updateBoardUsingIndices board indices =
-  updateBoardUsingTable board (makeTableFromBoardSquares board indices)
-
-updateBoardUsingAllHiddenSingles :: Board -> Board
-updateBoardUsingAllHiddenSingles board =
-  foldl updateBoardUsingIndices board allIndexLists
-
 updateBoardUsingHouse :: Board -> HouseID -> Board
 updateBoardUsingHouse board house =
   updateBoardUsingTable board (makeTableFromHouse board house)
