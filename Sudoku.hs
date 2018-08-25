@@ -55,15 +55,34 @@ showSquarePadded l sq = let
   in contents ++ padding
 
 -- this ends up with 90 character lines but I am still thinking about it
-showRow :: [Square] -> String
-showRow xs = intercalate " " (map (showSquarePadded 9) xs)
+showRow :: [Int] -> [Square] -> String
+showRow paddings squares = let
+  pairs = zip squares paddings
+  showPair (s, p) = showSquarePadded p s
+  in concat $ map showPair pairs
+
+makePostPadding :: Board -> [Int]
+-- the last column gets no post-padding. every other column gets 1 plus its
+-- widest column.
+makePostPadding b = let
+  squareWidth sq = case sq of
+    Possibilities s -> Set.size s
+    _               -> 1
+  columnSquares c = [b!i | i<-(indicesForColumn c)]
+  columnWidth :: Int -> Int
+  columnWidth c = maximum (map squareWidth $ columnSquares c)
+  columnPadding :: Int -> Int
+  columnPadding 8 = 0
+  columnPadding c = 1 + (columnWidth c)
+  in map columnPadding [0..8]
 
 splitEvery :: Int -> [a] -> [[a]]
 splitEvery i [] = []
 splitEvery i xs = (take i xs):(splitEvery i (drop i xs))
 
-showBoard :: Board -> [String]
-showBoard b = map showRow (splitEvery 9 (elems b))
+showBoard :: Board -> String
+showBoard b = intercalate "\n" $ map (showRow (makePostPadding b))
+                                     (splitEvery 9 (elems b))
 
 readDigitOrCrash :: Char -> Int
 readDigitOrCrash c = let
