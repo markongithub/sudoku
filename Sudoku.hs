@@ -18,8 +18,6 @@ type Index = Int
 type Possibility = Int
 type Board = Array Index Square
 
-data RowCol = RowCol Int Int deriving (Eq, Show)
-
 -- this will have four dupes and I don't care
 allIndexNeighbors :: Index -> [Index]
 allIndexNeighbors i = filter (/= i) $ concat
@@ -36,10 +34,6 @@ eliminatePossibility i rc = case rc of
   Possibilities s -> let
     newPossibilities = Set.delete i s
     in assert (not $ Set.null newPossibilities) $ Possibilities newPossibilities
-
-indexRowCol :: Int -> RowCol
-indexRowCol i = assert ((i >= 0) && (i < 81)) (
-  RowCol (rowForIndex i) (columnForIndex i))
 
 rowForIndex :: Index -> Int
 rowForIndex i = i `div` 9
@@ -166,8 +160,7 @@ allHouses = [ (HouseID hType x) | hType<-[Row, Column, Box], x<-[0..8]]
 
 boxForIndex :: Index -> Int
 boxForIndex i = let
-  RowCol r c = indexRowCol i
-  in 3 * (r `div` 3) + (c `div` 3)
+  in 3 * ((rowForIndex i) `div` 3) + ((columnForIndex i) `div` 3)
 
 allIndexLists :: [[Int]]
 allIndexLists = [ f list | f<-[indicesForRow, indicesForColumn, indicesForBox], list<-[0..8]]
