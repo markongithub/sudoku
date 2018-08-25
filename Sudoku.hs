@@ -245,7 +245,8 @@ reduceLockedCandidates house b (possibility, set) = let
     Nothing    -> b
   in assert ((Set.size set) > 0) answer
 
-eliminatePossibilityFromLockedCandidates :: Board -> Possibility -> Set Index -> HouseID -> Board
+eliminatePossibilityFromLockedCandidates :: Board -> Possibility -> Set Index ->
+                                            HouseID -> Board
 eliminatePossibilityFromLockedCandidates b p s h = let
   indicesToUpdate = filter (\i -> Set.notMember i s) $ indicesForHouse h
   in eliminateFromIndices b p indicesToUpdate
@@ -264,19 +265,23 @@ updateBoardUsingTable board (NineSquareData dTable indexSets h) = let
   in afterIndexSets
 
 updateBoardUsingIndices :: Board -> [Index] -> Board
-updateBoardUsingIndices board indices = updateBoardUsingTable board (makeTableFromBoardSquares board indices)
+updateBoardUsingIndices board indices =
+  updateBoardUsingTable board (makeTableFromBoardSquares board indices)
 
 updateBoardUsingAllHiddenSingles :: Board -> Board
-updateBoardUsingAllHiddenSingles board = foldl updateBoardUsingIndices board allIndexLists
+updateBoardUsingAllHiddenSingles board =
+  foldl updateBoardUsingIndices board allIndexLists
 
 updateBoardUsingHouse :: Board -> HouseID -> Board
-updateBoardUsingHouse board house = updateBoardUsingTable board (makeTableFromHouse board house)
+updateBoardUsingHouse board house =
+  updateBoardUsingTable board (makeTableFromHouse board house)
 
 updateBoardUsingAllHouses :: Board -> Board
 updateBoardUsingAllHouses board = foldl updateBoardUsingHouse board allHouses
 
 tryToSolve :: Board -> Board
-tryToSolve = snd . (iterateUntilStable updateBoardUsingAllHouses) . initialReduceFromKnown
+tryToSolve = snd . (iterateUntilStable updateBoardUsingAllHouses)
+             . initialReduceFromKnown
 
 indicesAreSameRow :: [Int] -> Maybe HouseID
 indicesAreSameRow [] = error "indicesAreSameRow on empty list"
