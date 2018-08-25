@@ -20,35 +20,6 @@ type Board = Array Index Square
 
 data RowCol = RowCol Int Int deriving (Eq, Show)
 
-rowLeft :: RowCol -> [RowCol]
-rowLeft (RowCol r c) = let
-  colsLeft = [0..(c - 1)]
-  in map (RowCol r) colsLeft
-
-rowRight :: RowCol -> [RowCol]
-rowRight (RowCol r c) = let
-  colsRight = [(c + 1)..8]
-  in map (RowCol r) colsRight
-
-columnUp :: RowCol -> [RowCol]
-columnUp (RowCol r c) = let
-  rowsUp = [0..(r - 1)]
-  in map (\newRow -> RowCol newRow c) rowsUp
-
-columnDown :: RowCol -> [RowCol]
-columnDown (RowCol r c) = let
-  rowsDown = [(r + 1)..8]
-  in map (\newRow -> RowCol newRow c) rowsDown
-
-boxMates :: RowCol -> [RowCol]
-boxMates (RowCol r c) = let
-  highest = 3 * (r `div` 3)
-  boxRows = [highest, highest + 1, highest + 2]
-  leftmost = 3 * (c `div` 3)
-  boxColumns = [leftmost, leftmost + 1, leftmost + 2]
-  -- normally I hate list comprehension but
-  in [ RowCol r1 c1 | r1<-boxRows, c1<-boxColumns, (r1, c1) /= (r, c) ]
-
 -- this will have four dupes and I don't care
 allIndexNeighbors :: Index -> [Index]
 allIndexNeighbors i = filter (/= i) $ concat
@@ -66,11 +37,9 @@ eliminatePossibility i rc = case rc of
     newPossibilities = Set.delete i s
     in assert (not $ Set.null newPossibilities) $ Possibilities newPossibilities
 
-rowColIndex :: RowCol -> Int
-rowColIndex (RowCol r c) = (9 * r) + c
-
 indexRowCol :: Int -> RowCol
-indexRowCol i = assert ((i >= 0) && (i < 81)) (RowCol (i `div` 9) (i `mod` 9))
+indexRowCol i = assert ((i >= 0) && (i < 81)) (
+  RowCol (rowForIndex i) (columnForIndex i))
 
 rowForIndex :: Index -> Int
 rowForIndex i = i `div` 9
