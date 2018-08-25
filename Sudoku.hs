@@ -237,16 +237,13 @@ updateBoardUsingIndexSet house board (indices, possibilities) = let
   canEliminate = Set.size indices == Set.size possibilities
   in if canEliminate then eliminateAll else board
 
-updateBoardUsingEntry :: HouseID -> Board -> (Possibility, Set Index) -> Board
-updateBoardUsingEntry house b (possibility, set) = case (Set.size set) of
-  0 -> error "How did I get a set of size zero here?"
-  1 -> reduceFromKnownSquare (b//[(Set.findMin set, Known possibility)]) (Set.findMin set)
-  _ -> reduceLockedCandidates b (possibility, set) house
-
-reduceLockedCandidates :: Board -> (Possibility, Set Index) -> HouseID -> Board
-reduceLockedCandidates b (possibility, set) house = case (findLockedCandidatesFromHouse house $ Set.toList set) of
-  Just house -> eliminatePossibilityFromLockedCandidates b possibility set house
-  Nothing    -> b
+reduceLockedCandidates :: HouseID -> Board -> (Possibility, Set Index) -> Board
+reduceLockedCandidates house b (possibility, set) = let
+  answer = case (findLockedCandidatesFromHouse house $ Set.toList set) of
+    Just house -> eliminatePossibilityFromLockedCandidates b possibility set
+                  house
+    Nothing    -> b
+  in assert ((Set.size set) > 0) answer
 
 eliminatePossibilityFromLockedCandidates :: Board -> Possibility -> Set Index -> HouseID -> Board
 eliminatePossibilityFromLockedCandidates b p s h = let
@@ -260,8 +257,10 @@ findLockedCandidatesFromHouse (HouseID hType _) indices = case hType of
   
 updateBoardUsingTable :: Board -> NineSquareData -> Board
 updateBoardUsingTable board (NineSquareData dTable indexSets h) = let
-  afterHiddenSingles = foldl (updateBoardUsingEntry h) board (Map.toList dTable)
-  afterIndexSets = foldl (updateBoardUsingIndexSet h) afterHiddenSingles (Map.toList indexSets)
+  afterLockedCandidates = foldl (reduceLockedCandidates h) board
+                          (Map.toList dTable)
+  afterIndexSets = foldl (updateBoardUsingIndexSet h) afterLockedCandidates
+                   (Map.toList indexSets)
   in afterIndexSets
 
 updateBoardUsingIndices :: Board -> [Index] -> Board
