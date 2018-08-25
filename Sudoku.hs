@@ -159,11 +159,11 @@ allHouses :: [HouseID]
 allHouses = [ (HouseID hType x) | hType<-[Row, Column, Box], x<-[0..8]]
 
 boxForIndex :: Index -> Int
-boxForIndex i = let
-  in 3 * ((rowForIndex i) `div` 3) + ((columnForIndex i) `div` 3)
+boxForIndex i = 3 * ((rowForIndex i) `div` 3) + ((columnForIndex i) `div` 3)
 
 allIndexLists :: [[Int]]
-allIndexLists = [ f list | f<-[indicesForRow, indicesForColumn, indicesForBox], list<-[0..8]]
+allIndexLists = [ f list | f<-[indicesForRow, indicesForColumn, indicesForBox],
+                           list<-[0..8]]
 
 type DigitsToIndices = Map Possibility (Set Index)
 type IndexSetUnions = Map (Set Index) (Set Possibility)
@@ -176,22 +176,12 @@ data NineSquareData = NineSquareData { digitsToIndices :: DigitsToIndices
 data HouseID = HouseID HouseType Int deriving (Eq, Show)
 
 addPossibilityToTable :: DigitsToIndices -> (Int, Int) -> DigitsToIndices
-addPossibilityToTable t (index, possibility) = Map.insertWith Set.union possibility (Set.singleton index) t
-
--- updateIndexSetUnions :: IndexSetUnions -> Set Possibility -> Index -> IndexSetUnions
--- updateIndexSetUnions t possibilities index = Map.insertWith Set.union possibilities (Set.singleton index) t
-
--- get rid of this when we get containers 0.5.11 or later
-powerSet :: Ord a => Set a -> Set (Set a)
-powerSet set = let
-  min = Set.findMin set
-  withoutMin = powerSet $ Set.deleteMin set
-  withMin = Set.map (Set.insert min) withoutMin
-  fancySubsets = Set.union withoutMin withMin
-  in if Set.null set then (Set.singleton Set.empty) else fancySubsets
+addPossibilityToTable t (index, possibility) =
+  Map.insertWith Set.union possibility (Set.singleton index) t
 
 addPossibilitySetToTables :: NineSquareData -> Int -> Set Int -> NineSquareData
-addPossibilitySetToTables (NineSquareData oldPTable oldIndexSets house) index possibilities = let
+addPossibilitySetToTables (NineSquareData oldPTable oldIndexSets house)
+                          index possibilities = let
   dPairs = zip (repeat index) (Set.toList possibilities)
   newDigits = foldl addPossibilityToTable oldPTable dPairs
   newIndexSets = updateIndexSetUnions oldIndexSets index possibilities
@@ -203,7 +193,8 @@ updateIndexSetUnions oldISU index possibilities = let
   oldPairs = Map.toList oldISU
   newSingletonPair = (Set.singleton index, possibilities)
   makeNewSet :: (Set Index, Set Possibility) -> (Set Index, Set Possibility)
-  makeNewSet (oldI, oldP) = (Set.insert index oldI, Set.union possibilities oldP)
+  makeNewSet (oldI, oldP) = (Set.insert index oldI,
+                             Set.union possibilities oldP)
   newPairs = map makeNewSet oldPairs
   newISU = Map.fromList (newSingletonPair:newPairs)
   in Map.unionWith (error "duplicate key") oldISU newISU
@@ -228,9 +219,11 @@ iterateUntilStable0 f x i = let
   output = f x
   in if (output == x) then (i, x) else (iterateUntilStable0 f output (i + 1))
 
-updateBoardUsingIndexSet :: HouseID -> Board -> (Set Index, Set Possibility) -> Board
+updateBoardUsingIndexSet :: HouseID -> Board -> (Set Index, Set Possibility)
+                            -> Board
 updateBoardUsingIndexSet house board (indices, possibilities) = let
-  indicesToUpdate = filter (\i -> Set.notMember i indices) $ indicesForHouse house
+  indicesToUpdate = filter (\i -> Set.notMember i indices)
+                    $ indicesForHouse house
   eliminate :: Board -> Possibility -> Board
   eliminate b p = eliminateFromIndices b p indicesToUpdate
   eliminateAll = foldl eliminate board (Set.toList possibilities)
@@ -286,12 +279,14 @@ tryToSolve = snd . (iterateUntilStable updateBoardUsingAllHouses)
 indicesAreSameRow :: [Int] -> Maybe HouseID
 indicesAreSameRow [] = error "indicesAreSameRow on empty list"
 indicesAreSameRow [i] = Just $ HouseID Row (i `div` 9)
-indicesAreSameRow (x:y:xs) = if (x `div` 9 == y `div` 9) then indicesAreSameRow (y:xs) else Nothing
+indicesAreSameRow (x:y:xs) = if (rowForIndex x == rowForIndex y)
+                             then indicesAreSameRow (y:xs) else Nothing
 
 indicesAreSameColumn :: [Int] -> Maybe HouseID
 indicesAreSameColumn [] = error "indicesAreSameColumn on empty list"
 indicesAreSameColumn [i] = Just $ HouseID Column (i `mod` 9)
-indicesAreSameColumn (x:y:xs) = if (x `mod` 9 == y `mod` 9) then indicesAreSameColumn (y:xs) else Nothing
+indicesAreSameColumn (x:y:xs) = if (columnForIndex x == columnForIndex y)
+                                then indicesAreSameColumn (y:xs) else Nothing
 
 indicesAreSameBox :: [Int] -> Maybe HouseID
 indicesAreSameBox [] = error "indicesAreSameBox on empty list"
