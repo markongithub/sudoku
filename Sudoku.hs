@@ -80,9 +80,9 @@ splitEvery :: Int -> [a] -> [[a]]
 splitEvery i [] = []
 splitEvery i xs = (take i xs):(splitEvery i (drop i xs))
 
-showBoard :: Board -> String
-showBoard b = intercalate "\n" $ map (showRow (makePostPadding b))
-                                     (splitEvery 9 (elems b))
+showBoard :: Board -> IO ()
+showBoard b = putStrLn $ intercalate "\n" $ map (showRow (makePostPadding b))
+                                                (splitEvery 9 (elems b))
 
 readDigitOrCrash :: Char -> Int
 readDigitOrCrash c = let
