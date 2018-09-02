@@ -8,7 +8,7 @@ import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-data Square = Known Int | Possibilities (Set Int) deriving (Eq)
+data Square = Known Int | Possibilities (Set Int) deriving (Eq, Show)
 allPossibilities :: Set Int
 allPossibilities = Set.fromList [1..9]
 
@@ -17,6 +17,18 @@ unknown = Possibilities allPossibilities
 type Index = Int
 type Possibility = Int
 type Board = Array Index Square
+
+isSolved :: Board -> Bool
+isSolved b = let
+  isKnown (Known i) = True
+  isKnown _ = False
+  in all isKnown $ elems b
+
+isSatisfiable :: Board -> Bool
+isSatisfiable b = let
+  isEmpty (Possibilities s) = Set.null s
+  isEmpty _ = False
+  in not $ any isEmpty $ elems b
 
 -- this will have four dupes and I don't care
 allIndexNeighbors :: Index -> [Index]
@@ -33,7 +45,8 @@ eliminatePossibility i rc = case rc of
                else rc
   Possibilities s -> let
     newPossibilities = Set.delete i s
-    in assert (not $ Set.null newPossibilities) $ Possibilities newPossibilities
+    in Possibilities newPossibilities
+
 
 rowForIndex :: Index -> Int
 rowForIndex i = i `div` 9
@@ -45,8 +58,8 @@ showSquare :: Square -> String
 showSquare (Known i) = show i
 showSquare (Possibilities s) = concat $ map show $ Set.toList s
 
-instance Show Square where
-  show = showSquare
+-- instance Show Square where
+--   show = showSquare
 
 showSquarePadded :: Int -> Square -> String
 showSquarePadded l sq = let
@@ -220,6 +233,7 @@ updateIndexSetUnions oldISU index possibilities = let
  
 addToTableFromBoardSquare :: Board -> NineSquareData -> Index -> NineSquareData
 addToTableFromBoardSquare board table index = case board!index of
+--  Known k         -> addPossibilitySetToTables table index (Set.singleton k)
   Possibilities s -> addPossibilitySetToTables table index s
   _               -> table
 
@@ -276,9 +290,14 @@ updateBoardUsingTable board (NineSquareData dTable indexSets h) = let
                    (Map.toList indexSets)
   in afterIndexSets
 
+reduceKnownsInHouse :: Board -> HouseID -> Board
+reduceKnownsInHouse board house =
+  foldl reduceFromKnownSquare board (indicesForHouse house)
+
 updateBoardUsingHouse :: Board -> HouseID -> Board
-updateBoardUsingHouse board house =
-  updateBoardUsingTable board (makeTableFromHouse board house)
+updateBoardUsingHouse board house = let
+  board2 = reduceKnownsInHouse board house
+  in updateBoardUsingTable board2 (makeTableFromHouse board2 house)
 
 updateBoardUsingAllHouses :: Board -> Board
 updateBoardUsingAllHouses board = foldl updateBoardUsingHouse board allHouses
@@ -309,3 +328,23 @@ indicesAreSameRowOrColumn :: [Int] -> Maybe HouseID
 indicesAreSameRowOrColumn indices = case indicesAreSameRow indices of
   Just r -> Just r
   Nothing -> indicesAreSameColumn indices
+
+possibilities :: Square -> Set Possibility
+possibilities (Known _) = error "You did it wrong"
+possibilities (Possibilities s) = s
+
+solveWithGuesses :: Board -> Board
+solveWithGuesses board = let
+  board2 = tryToSolve board
+  isKnown (Known i) = True
+  isKnown _ = False
+  firstUnknown = head $ filter (not . isKnown . snd) $ assocs board2
+  guesses = Set.toList $ possibilities $ snd firstUnknown
+  index = fst firstUnknown
+  guessBoards :: [Board]
+  guessBoards = map (\g -> board2//[(index, Known g)]) guesses
+  results = map solveWithGuesses guessBoards
+  successes = filter isSolved $ results
+  result = if null successes then head results else head successes
+  in if (isSolved board2 || (not . isSatisfiable) board2)
+     then board2 else result
