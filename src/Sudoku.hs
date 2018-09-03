@@ -139,11 +139,12 @@ parseRows rows = parseBoard $ concat rows
 
 parseBoard :: String -> Board
 parseBoard oneBigString = let
-  ifItsOK = assert (length oneBigString == 81)
-  squares = ifItsOK $ map charToSquare oneBigString
+  squares = map charToSquare oneBigString
   pairs:: [(Int, Square)]
   pairs = zip [0..80] squares
-  in Array.array (0,80) pairs
+  in case (length oneBigString) of
+    81 -> Array.array (0,80) pairs
+    _  -> error "Invalid board input"
 
 fixSinglePossibility :: Square -> Square
 fixSinglePossibility sq = case sq of
