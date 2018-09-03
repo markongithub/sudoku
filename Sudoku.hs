@@ -1,7 +1,8 @@
 module Main where
 
 import Control.Exception.Base(assert)
-import Data.Array
+import Data.Array (Array, (!), (//))
+import qualified Data.Array as Array
 import Data.List (intercalate)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -22,13 +23,13 @@ isSolved :: Board -> Bool
 isSolved b = let
   isKnown (Known i) = True
   isKnown _ = False
-  in all isKnown $ elems b
+  in all isKnown $ Array.elems b
 
 isSatisfiable :: Board -> Bool
 isSatisfiable b = let
   isEmpty (Possibilities s) = Set.null s
   isEmpty _ = False
-  in not $ any isEmpty $ elems b
+  in not $ any isEmpty $ Array.elems b
 
 -- this will have four dupes and I don't care
 allIndexNeighbors :: Index -> [Index]
@@ -95,7 +96,7 @@ splitEvery i xs = (take i xs):(splitEvery i (drop i xs))
 
 showBoard :: Board -> IO ()
 showBoard b = putStrLn $ intercalate "\n" $ map (showRow (makePostPadding b))
-                                                (splitEvery 9 (elems b))
+                                                (splitEvery 9 (Array.elems b))
 
 readDigitOrCrash :: Char -> Int
 readDigitOrCrash c = let
@@ -138,10 +139,11 @@ parseRows rows = parseBoard $ concat rows
 
 parseBoard :: String -> Board
 parseBoard oneBigString = let
-  squares = map charToSquare oneBigString
+  ifItsOK = assert (length oneBigString == 81)
+  squares = ifItsOK $ map charToSquare oneBigString
   pairs:: [(Int, Square)]
   pairs = zip [0..80] squares
-  in array (0,80) pairs
+  in Array.array (0,80) pairs
 
 
 fixSinglePossibility :: Square -> Square
@@ -338,7 +340,7 @@ solveWithGuesses board = let
   board2 = tryToSolve board
   isKnown (Known i) = True
   isKnown _ = False
-  firstUnknown = head $ filter (not . isKnown . snd) $ assocs board2
+  firstUnknown = head $ filter (not . isKnown . snd) $ Array.assocs board2
   guesses = Set.toList $ possibilities $ snd firstUnknown
   index = fst firstUnknown
   guessBoards :: [Board]
