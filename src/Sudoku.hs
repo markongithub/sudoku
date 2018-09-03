@@ -145,7 +145,6 @@ parseBoard oneBigString = let
   pairs = zip [0..80] squares
   in Array.array (0,80) pairs
 
-
 fixSinglePossibility :: Square -> Square
 fixSinglePossibility sq = case sq of
   (Possibilities s) -> if (Set.size s == 1) then Known (Set.findMin s) else sq
