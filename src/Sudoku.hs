@@ -1,4 +1,4 @@
-module Main where
+module Sudoku where
 
 import Control.Exception.Base(assert)
 import Data.Array (Array, (!), (//))
