@@ -18,12 +18,16 @@ unknown = Possibilities allPossibilities
 type Index = Int
 type Possibility = Int
 type Board = Array Index Square
+data BoardKK = BoardKK Board [MathGroup] deriving (Eq, Show)
 
 isSolved :: Board -> Bool
 isSolved b = let
   isKnown (Known i) = True
   isKnown _ = False
   in all isKnown $ Array.elems b
+
+isSolvedKK :: BoardKK -> Bool
+isSolvedKK (BoardKK b _) = isSolved b
 
 isSatisfiable :: Board -> Bool
 isSatisfiable b = let
@@ -97,6 +101,11 @@ showBoard :: Board -> IO ()
 showBoard b = putStrLn $ intercalate "\n" $ map (showRow (makePostPadding b))
                                                 (splitEvery 9 (Array.elems b))
 
+showBoardKK :: BoardKK -> IO ()
+showBoardKK (BoardKK b gs) = do
+  showBoard b
+  putStrLn $ show gs
+  
 readDigitOrCrash :: Char -> Int
 readDigitOrCrash c = let
   i = (read [c] :: Int)
@@ -130,7 +139,7 @@ testPuzzleRows2 = ["  46     ",
 
 testPuzzleRows = "004300209005009001070060043006002087190007400050083000600000105003508690042910300"
 
-testBoard = parseBoard testPuzzleRows
+testBoard = BoardKK (parseBoard testPuzzleRows) []
 testProgress = tryToSolve testBoard
 
 parseRows :: [String] -> Board
@@ -150,14 +159,24 @@ fixSinglePossibility sq = case sq of
   (Possibilities s) -> if (Set.size s == 1) then Known (Set.findMin s) else sq
   _                 -> sq
 
--- KENKEN: We'll reduce the mathematical neighbors here too.
-reduceFromKnownSquare :: Board -> Int -> Board
-reduceFromKnownSquare b i = let
+-- So first we check if there is only one possibility in a square.
+-- if there is we replace that with a Known.
+-- and then we eliminate that number from all of this square's neighbors
+-- if there is more than one possibility I think this function does nothing
+-- KENKEN: maybe we'll reduce the mathematical neighbors here too, maybe not
+reduceFromKnownSquare :: BoardKK -> Int -> BoardKK
+reduceFromKnownSquare (BoardKK b gs) i = let
   newBoard = b//[(i, fixSinglePossibility (b!i))]
   neighbors = allIndexNeighbors i
+  fixedNeighbors k = eliminateFromIndices newBoard k neighbors
+  fixedMathGroups k = fixMathGroups (BoardKK (fixedNeighbors k) gs) i k
   in case newBoard!i of
-    Known knownValue -> eliminateFromIndices newBoard knownValue neighbors
-    _                -> newBoard
+    Known knownValue -> fixedMathGroups knownValue
+    _                -> BoardKK newBoard gs
+
+-- not implemented yet, identity function
+fixMathGroups :: BoardKK -> Index -> Possibility -> BoardKK
+fixMathGroups bkk _ _ = bkk
 
 eliminateFromIndices :: Board -> Possibility -> [Index] -> Board
 eliminateFromIndices board possibility indices = let
@@ -166,7 +185,7 @@ eliminateFromIndices board possibility indices = let
   allUpdates = map makeUpdate indices
   in board//allUpdates
 
-initialReduceFromKnown :: Board -> Board
+initialReduceFromKnown :: BoardKK -> BoardKK
 initialReduceFromKnown b = foldl reduceFromKnownSquare b [0..80]
 
 iterateUntilStable :: Eq a => (a -> a) -> a -> (Int, a)
@@ -178,31 +197,33 @@ indicesForRow r = [(9 * r)..(9 * r + 8)]
 indicesForColumn :: Int -> [Int]
 indicesForColumn c = map (\r -> r * 9 + c) [0..8]
 
-indicesForBox :: Int -> [Int]
-indicesForBox b = let
-  upperLeft = 27 * (b `div` 3) + 3 * (b `mod` 3)
-  in [ 9 * x + y + upperLeft | x<-[0..2], y<-[0..2] ]
--- 0 -> 0-2,9-11,18-20
-
 indicesForHouse :: HouseID -> [Int]
 indicesForHouse (HouseID Row r) = indicesForRow r
 indicesForHouse (HouseID Column c) = indicesForColumn c
-indicesForHouse (HouseID Box b) = indicesForBox b
 
 allHouses :: [HouseID]
-allHouses = [ (HouseID hType x) | hType<-[Row, Column, Box], x<-[0..8]]
+allHouses = [ (HouseID hType x) | hType<-[Row, Column], x<-[0..8]]
 
 boxForIndex :: Index -> Int
 boxForIndex i = 3 * ((rowForIndex i) `div` 3) + ((columnForIndex i) `div` 3)
 
 allIndexLists :: [[Int]]
-allIndexLists = [ f list | f<-[indicesForRow, indicesForColumn, indicesForBox],
+allIndexLists = [ f list | f<-[indicesForRow, indicesForColumn],
                            list<-[0..8]]
 
 type DigitsToIndices = Map Possibility (Set Index)
 type IndexSetUnions = Map (Set Index) (Set Possibility)
 
-data HouseType = Row | Column | Box deriving (Eq, Show)
+data HouseType = Row | Column deriving (Eq, Show)
+-- ok DigitsToIndices is like "for each digit, which indices can it be in"
+-- that's how you know "all the 2s in this column are in the same box, which means
+-- they can't be in another column in that box"
+-- IndexSetUnions is like "for each possible subset of indices, what is the
+-- union of the possibilities for that set." that's how you realize that three
+-- given indices have a total set of possibilities of size three, which means
+-- no other index in the house can have any of those values.
+-- KENKEN: I think we can only use DigitsToIndices when the value is of size 1.
+-- I think we can still use IndexSetUnions?
 data NineSquareData = NineSquareData { digitsToIndices :: DigitsToIndices
                                      , indexSetUnions :: IndexSetUnions
                                      , house :: HouseID } deriving (Eq, Show)
@@ -254,6 +275,8 @@ iterateUntilStable0 f x i = let
   output = f x
   in if (output == x) then (i, x) else (iterateUntilStable0 f output (i + 1))
 
+-- ok so this says "if indices [x,y] combined only have digits [a,b] then no other
+-- index can have a or b".
 updateBoardUsingIndexSet :: HouseID -> Board -> (Set Index, Set Possibility)
                             -> Board
 updateBoardUsingIndexSet house board (indices, possibilities) = let
@@ -265,46 +288,53 @@ updateBoardUsingIndexSet house board (indices, possibilities) = let
   canEliminate = Set.size indices == Set.size possibilities
   in if canEliminate then eliminateAll else board
 
-reduceLockedCandidates :: HouseID -> Board -> (Possibility, Set Index) -> Board
-reduceLockedCandidates house b (possibility, set) = let
-  answer = case (findLockedCandidatesFromHouse house $ Set.toList set) of
-    Just house -> eliminatePossibilityFromLockedCandidates b possibility set
-                  house
-    Nothing    -> b
-  in assert ((Set.size set) > 0) answer
+-- this does not seem to handle the case where there is exactly one 2 in a row
+-- reduceLockedCandidates :: HouseID -> Board -> (Possibility, Set Index) -> Board
+-- reduceLockedCandidates house b (possibility, set) = let
+--  answer = case (findLockedCandidatesFromHouse house $ Set.toList set) of
+--    Just house -> eliminatePossibilityFromLockedCandidates b possibility set
+--                  house
+--    Nothing    -> b
+--  in assert ((Set.size set) > 0) answer
 
+-- I think the idea is "if all the 2s in this row are in the same box, then we
+-- can eliminate all the other 2s in that box, because the 2 from that box HAS
+-- to be in this row". (Replace row with column and also flip row/column with box.)
+-- KENKEN: I feel like this logic might be entirely irrelevant to Kenken?
 eliminatePossibilityFromLockedCandidates :: Board -> Possibility -> Set Index ->
                                             HouseID -> Board
 eliminatePossibilityFromLockedCandidates b p s h = let
   indicesToUpdate = filter (\i -> Set.notMember i s) $ indicesForHouse h
   in eliminateFromIndices b p indicesToUpdate
 
-findLockedCandidatesFromHouse :: HouseID -> [Index] -> Maybe HouseID
-findLockedCandidatesFromHouse (HouseID hType _) indices = case hType of
-  Box -> indicesAreSameRowOrColumn indices
-  _   -> indicesAreSameBox indices
-  
+-- okay so first we do something with "locked candidates"
+-- KENKEN: which I think is totally irrelevant?
+-- actually when do we hit the case where there is only one 5 in a row.
+-- then we do something with "index sets"
+
 updateBoardUsingTable :: Board -> NineSquareData -> Board
 updateBoardUsingTable board (NineSquareData dTable indexSets h) = let
-  afterLockedCandidates = foldl (reduceLockedCandidates h) board
-                          (Map.toList dTable)
+  afterLockedCandidates = board -- we don't do locked stuff
   afterIndexSets = foldl (updateBoardUsingIndexSet h) afterLockedCandidates
                    (Map.toList indexSets)
   in afterIndexSets
 
-reduceKnownsInHouse :: Board -> HouseID -> Board
+-- this just calls reduceFromKnownSquare on every square in a house, which does
+-- nothing with squares that have >1 possibility
+reduceKnownsInHouse :: BoardKK -> HouseID -> BoardKK
 reduceKnownsInHouse board house =
   foldl reduceFromKnownSquare board (indicesForHouse house)
 
-updateBoardUsingHouse :: Board -> HouseID -> Board
+updateBoardUsingHouse :: BoardKK -> HouseID -> BoardKK
 updateBoardUsingHouse board house = let
-  board2 = reduceKnownsInHouse board house
-  in updateBoardUsingTable board2 (makeTableFromHouse board2 house)
+  (BoardKK board2 gs2) = reduceKnownsInHouse board house
+  board3 = updateBoardUsingTable board2 (makeTableFromHouse board2 house)
+  in BoardKK board3 gs2
 
-updateBoardUsingAllHouses :: Board -> Board
+updateBoardUsingAllHouses :: BoardKK -> BoardKK
 updateBoardUsingAllHouses board = foldl updateBoardUsingHouse board allHouses
 
-tryToSolve :: Board -> Board
+tryToSolve :: BoardKK -> BoardKK
 tryToSolve = snd . (iterateUntilStable updateBoardUsingAllHouses)
              . initialReduceFromKnown
 
@@ -320,12 +350,6 @@ indicesAreSameColumn [i] = Just $ HouseID Column (i `mod` 9)
 indicesAreSameColumn (x:y:xs) = if (columnForIndex x == columnForIndex y)
                                 then indicesAreSameColumn (y:xs) else Nothing
 
-indicesAreSameBox :: [Int] -> Maybe HouseID
-indicesAreSameBox [] = error "indicesAreSameBox on empty list"
-indicesAreSameBox indices = let
-  (x:xs) = map boxForIndex indices
-  in if (all (== x) xs) then Just (HouseID Box x) else Nothing
-
 indicesAreSameRowOrColumn :: [Int] -> Maybe HouseID
 indicesAreSameRowOrColumn indices = case indicesAreSameRow indices of
   Just r -> Just r
@@ -335,18 +359,107 @@ possibilities :: Square -> Set Possibility
 possibilities (Known _) = error "You did it wrong"
 possibilities (Possibilities s) = s
 
-solveWithGuesses :: Board -> Board
+solveWithGuesses :: BoardKK -> BoardKK
 solveWithGuesses board = let
-  board2 = tryToSolve board
+  BoardKK board2 gs2 = tryToSolve board
   isKnown (Known i) = True
   isKnown _ = False
   firstUnknown = head $ filter (not . isKnown . snd) $ Array.assocs board2
   guesses = Set.toList $ possibilities $ snd firstUnknown
   index = fst firstUnknown
-  guessBoards :: [Board]
-  guessBoards = map (\g -> board2//[(index, Known g)]) guesses
+  guessBoards :: [BoardKK]
+  guessBoards = map (\g -> BoardKK(board2//[(index, Known g)]) gs2) guesses
   results = map solveWithGuesses guessBoards
-  successes = filter isSolved $ results
+  successes = filter isSolvedKK $ results
   result = if null successes then head results else head successes
   in if (isSolved board2 || (not . isSatisfiable) board2)
-     then board2 else result
+     then (BoardKK board2 []) else result
+
+applyGuessWithMathGroup3 :: Index ->  Board -> MathGroup -> Possibility -> (Board, MathGroup)
+applyGuessWithMathGroup3 i board mg v = let
+  board2 = board//[(i, Known v)]
+  BoardKK board3 _ = reduceFromKnownSquare (BoardKK board2 []) i
+  mg2 = reduceGroupWithIndexValue i v mg
+  in (board3, mg2)
+
+applyGuessWithMathGroup2 :: Index ->  Board -> MathGroup -> Possibility -> (Index, Set Possibility)
+applyGuessWithMathGroup2 i board mg v = let
+  board2 = board//[(i, Known v)]
+  BoardKK board3 _ = reduceFromKnownSquare (BoardKK board2 []) i
+  lastIndex :: Index
+  lastSquare :: Square
+  (lastIndex, lastSquare) = reduceGroupWithIndexValue2 i v mg
+  in case (board3!lastIndex, lastSquare) of
+    (Possibilities s1, Possibilities s2) -> (lastIndex, Set.intersection s1 s2)
+    _                                    -> error "Why do we have a Known here"
+
+applyAllGuessesWithMathGroup2 :: Board -> MathGroup -> [(Index, Set Possibility)]
+applyAllGuessesWithMathGroup2 board mg = let
+  MathGroup _ _ groupIndices = mg
+  i = Set.findMin groupIndices
+  guesses :: [Possibility]
+  guesses = case board!i of
+    Possibilities s -> Set.toList s
+    Known k         -> error "we should not have a Known here"
+  guessOutcomes :: [(Possibility, (Index, Set Possibility))]
+  guessOutcomes = map (\v -> (v, applyGuessWithMathGroup2 i board mg v)) guesses
+  -- we need to know which guessOutcomes had no possibilities for the last square
+  legitOutcome :: (Possibility, (Index, Set Possibility)) -> Bool
+  legitOutcome (_, (_, s)) = not $ Set.null s
+  legitGuesses = Set.fromList $ map fst $ filter legitOutcome guessOutcomes
+  lastSquares = Set.unions $ map (snd . snd) guessOutcomes
+  lastIndex = fst $ snd $ head guessOutcomes
+  in [(i, legitGuesses), (lastIndex, lastSquares)]
+  
+  
+  
+-- narrowDownMathGroup :: Board -> MathGroup -> [(Index, Square)]
+-- narrowDownMathGroup b mg = let
+-- let's assume all indices in the group are still unknown
+-- but maybe that's wrong?
+-- I think the logic is
+-- figure out all the guesses for the first square
+-- if there's only one square left, return the possibilities for the last one,
+-- make boards for them, including reducing the neighbors and updating the math group
+-- 
+-- 
+
+data MathGroup = MathGroup Char Int (Set Index) deriving (Eq, Show)
+mathGroupFromList :: Char -> Int -> [Index] -> MathGroup
+mathGroupFromList c t is = MathGroup c t (Set.fromList is)
+
+-- this is only for groups of size 3 or bigger which means no
+-- subtraction or division
+reduceGroupWithIndexValue ::  Index -> Possibility -> MathGroup -> MathGroup
+reduceGroupWithIndexValue i value (MathGroup op total s) = let
+  newSet = if Set.member i s then Set.delete i s else error "can't delete that"
+  newTotal = case op of
+    '+' -> total - value
+    '*' -> if ((total `mod` value) == 0) then total `div` value else error "bad division"
+    _   -> error ("I did not expect operation " ++ show op)
+  in MathGroup op newTotal newSet
+
+reduceGroupWithIndexValue2 :: Index -> Possibility -> MathGroup -> (Index, Square)
+reduceGroupWithIndexValue2 i value (MathGroup op total s) = let
+  lastIndex :: Index
+  lastIndex = if ((Set.size s /= 2) || (Set.notMember i s)) then error "you fucked up reduceGroupWithIndexValue2" else Set.findMin $ Set.delete i s
+  rawValues = case op of
+      '+' -> [total - value]
+      '-' -> [total - value, total + value]
+      '*' -> if (total `mod` value == 0) then [total `div` value] else []
+      '/' -> if (total `mod` value == 0) then [total * value, total `div` value] else  [total * value]
+      _   -> error ("I did not expect operation " ++ show op)
+  seriousValues = filter (\x -> (x >= 0) && (x <=9)) rawValues
+  in (lastIndex, Possibilities (Set.fromList seriousValues))
+
+testBoardKK1 = parseBoard "000000000000000000004000000000000000000000000000000000000030000000000000000000000"
+testMGKK1 = [
+    mathGroupFromList '*' 120 [0,1,2]
+  , mathGroupFromList '+' 9 [3,12]
+  , mathGroupFromList '+' 7 [4,13]
+  , mathGroupFromList '-' 4 [5,14]
+  , mathGroupFromList '+' 14 [6,7,8]
+  ]
+testKK = BoardKK testBoardKK1 testMGKK1
+
+(testBoardKK2,testMGKK2) =  applyGuessWithMathGroup3 0 testBoardKK1 (head testMGKK1) 3
