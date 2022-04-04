@@ -3,7 +3,7 @@ module KenKen where
 import Control.Exception.Base(assert)
 import Data.Array (Array, (!), (//))
 import qualified Data.Array as Array
-import Data.List (intercalate)
+import Data.List (intercalate, partition)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
@@ -18,7 +18,7 @@ unknown = Possibilities allPossibilities
 type Index = Int
 type Possibility = Int
 type Board = Array Index Square
-data BoardKK = BoardKK Board [MathGroup] deriving (Eq, Show)
+data BoardKK = BoardKK { getBoard :: Board, getMathGroups :: [MathGroup] } deriving (Eq, Show)
 
 isSolved :: Board -> Bool
 isSolved b = let
@@ -169,14 +169,27 @@ reduceFromKnownSquare (BoardKK b gs) i = let
   newBoard = b//[(i, fixSinglePossibility (b!i))]
   neighbors = allIndexNeighbors i
   fixedNeighbors k = eliminateFromIndices newBoard k neighbors
-  fixedMathGroups k = fixMathGroups (BoardKK (fixedNeighbors k) gs) i k
+  fixedMathGroups k = fixMathGroupsFromKnown (BoardKK (fixedNeighbors k) gs) i k
   in case newBoard!i of
     Known knownValue -> fixedMathGroups knownValue
     _                -> BoardKK newBoard gs
 
--- not implemented yet, identity function
-fixMathGroups :: BoardKK -> Index -> Possibility -> BoardKK
-fixMathGroups bkk _ _ = bkk
+groupContainsIndex ::  Index -> MathGroup -> Bool
+groupContainsIndex i (MathGroup _ _ is) = Set.member i is
+
+sizeOver2 :: MathGroup -> Bool
+sizeOver2 (MathGroup _ _ s) = Set.size s > 2
+
+fixMathGroupsFromKnown :: BoardKK -> Index -> Possibility -> BoardKK
+fixMathGroupsFromKnown (BoardKK board mgs) i v = let
+  (relevantMGs, otherMGs) = partition (groupContainsIndex i) mgs
+  -- reduceGroupWithIndexValue ::  Index -> Possibility -> MathGroup -> Maybe MathGroup
+  (bigRelevantMGs, smallRelevantMGs) = partition sizeOver2 relevantMGs
+  newMGs = map (reduceGroupWithIndexValueKnown i v) bigRelevantMGs
+  allUpdates = map (reduceGroupWithIndexValue2 i v) smallRelevantMGs
+  allMGsNew = newMGs ++ otherMGs
+  newBoard = board//allUpdates
+  in BoardKK newBoard allMGsNew  
 
 eliminateFromIndices :: Board -> Possibility -> [Index] -> Board
 eliminateFromIndices board possibility indices = let
@@ -334,8 +347,25 @@ updateBoardUsingHouse board house = let
 updateBoardUsingAllHouses :: BoardKK -> BoardKK
 updateBoardUsingAllHouses board = foldl updateBoardUsingHouse board allHouses
 
+updateBoardUsingMathGroup :: BoardKK -> MathGroup -> BoardKK
+-- possibilitiesForMathGroup :: Board -> MathGroup -> Map Index (Set Possibility)
+updateBoardUsingMathGroup (BoardKK board mgs) mg = let
+  possMap = possibilitiesForMathGroup board mg
+  asPairs = Map.toList possMap
+  allUpdates = map (\(i,set) -> (i, Possibilities set)) asPairs
+  newBoard = board//allUpdates
+  in BoardKK newBoard mgs
+
+updateBoardUsingAllMathGroups :: BoardKK -> BoardKK
+updateBoardUsingAllMathGroups bkk = let
+  BoardKK _ mgs = bkk
+  in foldl updateBoardUsingMathGroup bkk mgs
+
+updateBoardUsingAllLogic :: BoardKK -> BoardKK
+updateBoardUsingAllLogic = updateBoardUsingAllHouses . updateBoardUsingAllMathGroups
+
 tryToSolve :: BoardKK -> BoardKK
-tryToSolve = snd . (iterateUntilStable updateBoardUsingAllHouses)
+tryToSolve = snd . (iterateUntilStable updateBoardUsingAllLogic)
              . initialReduceFromKnown
 
 indicesAreSameRow :: [Int] -> Maybe HouseID
@@ -359,30 +389,35 @@ possibilities :: Square -> Set Possibility
 possibilities (Known _) = error "You did it wrong"
 possibilities (Possibilities s) = s
 
+makeGuessBoards :: BoardKK -> [BoardKK]
+makeGuessBoards (BoardKK board gs) = let
+  isKnown (Known i) = True
+  isKnown _ = False
+  firstUnknown = head $ filter (not . isKnown . snd) $ Array.assocs board
+  guesses = Set.toList $ possibilities $ snd firstUnknown
+  index = fst firstUnknown
+  in map (\g -> BoardKK(board//[(index, Known g)]) gs) guesses
+
 solveWithGuesses :: BoardKK -> BoardKK
 solveWithGuesses board = let
   BoardKK board2 gs2 = tryToSolve board
-  isKnown (Known i) = True
-  isKnown _ = False
-  firstUnknown = head $ filter (not . isKnown . snd) $ Array.assocs board2
-  guesses = Set.toList $ possibilities $ snd firstUnknown
-  index = fst firstUnknown
-  guessBoards :: [BoardKK]
-  guessBoards = map (\g -> BoardKK(board2//[(index, Known g)]) gs2) guesses
+  guessBoards = makeGuessBoards (BoardKK board2 gs2)
   results = map solveWithGuesses guessBoards
   successes = filter isSolvedKK $ results
   result = if null successes then head results else head successes
   in if (isSolved board2 || (not . isSatisfiable) board2)
      then (BoardKK board2 []) else result
 
-applyGuessWithMathGroup3 :: Index ->  Board -> MathGroup -> Possibility -> (Board, MathGroup)
+applyGuessWithMathGroup3 :: Index ->  Board -> MathGroup -> Possibility -> Map Index (Set Possibility)
 applyGuessWithMathGroup3 i board mg v = let
   board2 = board//[(i, Known v)]
   BoardKK board3 _ = reduceFromKnownSquare (BoardKK board2 []) i
-  mg2 = reduceGroupWithIndexValue i v mg
-  in (board3, mg2)
+  mg2Maybe = reduceGroupWithIndexValue i v mg
+  in case mg2Maybe of
+    Nothing  -> Map.empty
+    Just mg2 -> possibilitiesForMathGroup board3 mg2
 
-applyGuessWithMathGroup2 :: Index ->  Board -> MathGroup -> Possibility -> (Index, Set Possibility)
+applyGuessWithMathGroup2 :: Index ->  Board -> MathGroup -> Possibility -> Map Index (Set Possibility)
 applyGuessWithMathGroup2 i board mg v = let
   board2 = board//[(i, Known v)]
   BoardKK board3 _ = reduceFromKnownSquare (BoardKK board2 []) i
@@ -390,28 +425,36 @@ applyGuessWithMathGroup2 i board mg v = let
   lastSquare :: Square
   (lastIndex, lastSquare) = reduceGroupWithIndexValue2 i v mg
   in case (board3!lastIndex, lastSquare) of
-    (Possibilities s1, Possibilities s2) -> (lastIndex, Set.intersection s1 s2)
+    (Possibilities s1, Possibilities s2) -> Map.singleton lastIndex (Set.intersection s1 s2)
     _                                    -> error "Why do we have a Known here"
 
-applyAllGuessesWithMathGroup2 :: Board -> MathGroup -> [(Index, Set Possibility)]
-applyAllGuessesWithMathGroup2 board mg = let
+possibilitiesForMathGroup :: Board -> MathGroup -> Map Index (Set Possibility)
+possibilitiesForMathGroup board mg = let
   MathGroup _ _ groupIndices = mg
   i = Set.findMin groupIndices
   guesses :: [Possibility]
   guesses = case board!i of
     Possibilities s -> Set.toList s
     Known k         -> error "we should not have a Known here"
-  guessOutcomes :: [(Possibility, (Index, Set Possibility))]
-  guessOutcomes = map (\v -> (v, applyGuessWithMathGroup2 i board mg v)) guesses
+  applyFunc
+    | Set.size groupIndices > 2 = applyGuessWithMathGroup3
+    | Set.size groupIndices == 2 = applyGuessWithMathGroup2
+    | otherwise = error "too few indices for possibilitiesForMathGroup"
+  guessOutcomes :: [(Possibility, Map Index (Set Possibility))]
+  guessOutcomes = map (\v -> (v, applyFunc i board mg v)) guesses
   -- we need to know which guessOutcomes had no possibilities for the last square
-  legitOutcome :: (Possibility, (Index, Set Possibility)) -> Bool
-  legitOutcome (_, (_, s)) = not $ Set.null s
-  legitGuesses = Set.fromList $ map fst $ filter legitOutcome guessOutcomes
-  lastSquares = Set.unions $ map (snd . snd) guessOutcomes
-  lastIndex = fst $ snd $ head guessOutcomes
-  in [(i, legitGuesses), (lastIndex, lastSquares)]
-  
-  
+  legitOutcome :: (Possibility, Map Index (Set Possibility)) -> Bool
+  legitOutcome (_, m) = hasPossibilities m
+  legitOutcomes = filter legitOutcome guessOutcomes
+  legitMaps = map snd legitOutcomes
+  legitGuesses = Set.fromList $ map fst legitOutcomes
+  unionMap = Map.unionsWith Set.union legitMaps
+  in Map.insert i legitGuesses unionMap
+
+hasPossibilities :: (Ord a, Ord b) => Map a (Set b) -> Bool
+hasPossibilities m = case Map.elems m of
+  [] -> False
+  sets -> all (not . Set.null) sets
   
 -- narrowDownMathGroup :: Board -> MathGroup -> [(Index, Square)]
 -- narrowDownMathGroup b mg = let
@@ -424,20 +467,27 @@ applyAllGuessesWithMathGroup2 board mg = let
 -- 
 -- 
 
-data MathGroup = MathGroup Char Int (Set Index) deriving (Eq, Show)
+data MathGroup = MathGroup Char Int (Set Index) deriving (Eq, Ord, Show)
 mathGroupFromList :: Char -> Int -> [Index] -> MathGroup
 mathGroupFromList c t is = MathGroup c t (Set.fromList is)
 
 -- this is only for groups of size 3 or bigger which means no
 -- subtraction or division
-reduceGroupWithIndexValue ::  Index -> Possibility -> MathGroup -> MathGroup
+reduceGroupWithIndexValue ::  Index -> Possibility -> MathGroup -> Maybe MathGroup
 reduceGroupWithIndexValue i value (MathGroup op total s) = let
   newSet = if Set.member i s then Set.delete i s else error "can't delete that"
   newTotal = case op of
-    '+' -> total - value
-    '*' -> if ((total `mod` value) == 0) then total `div` value else error "bad division"
+    '+' -> Just (total - value)
+    '*' -> if ((total `mod` value) == 0) then Just (total `div` value) else Nothing
     _   -> error ("I did not expect operation " ++ show op)
-  in MathGroup op newTotal newSet
+  in case newTotal of
+    Nothing -> Nothing
+    Just t  -> Just $ MathGroup op t newSet
+
+reduceGroupWithIndexValueKnown ::  Index -> Possibility -> MathGroup -> MathGroup
+reduceGroupWithIndexValueKnown i value mg = case (reduceGroupWithIndexValue i value mg) of
+  Nothing -> error "You fucked up reduceGroupWithIndexValueKnown"
+  Just mg -> mg
 
 reduceGroupWithIndexValue2 :: Index -> Possibility -> MathGroup -> (Index, Square)
 reduceGroupWithIndexValue2 i value (MathGroup op total s) = let
@@ -445,21 +495,55 @@ reduceGroupWithIndexValue2 i value (MathGroup op total s) = let
   lastIndex = if ((Set.size s /= 2) || (Set.notMember i s)) then error "you fucked up reduceGroupWithIndexValue2" else Set.findMin $ Set.delete i s
   rawValues = case op of
       '+' -> [total - value]
-      '-' -> [total - value, total + value]
+      '-' -> [value - total, value + total]
       '*' -> if (total `mod` value == 0) then [total `div` value] else []
       '/' -> if (total `mod` value == 0) then [total * value, total `div` value] else  [total * value]
       _   -> error ("I did not expect operation " ++ show op)
   seriousValues = filter (\x -> (x >= 0) && (x <=9)) rawValues
   in (lastIndex, Possibilities (Set.fromList seriousValues))
 
-testBoardKK1 = parseBoard "000000000000000000004000000000000000000000000000000000000030000000000000000000000"
+-- PUZZLE NO. 200234
+testBoardKK1 = parseBoard "000000000000000000000000000000000000000000000000000000000000000000000000000000000"
 testMGKK1 = [
-    mathGroupFromList '*' 120 [0,1,2]
-  , mathGroupFromList '+' 9 [3,12]
-  , mathGroupFromList '+' 7 [4,13]
-  , mathGroupFromList '-' 4 [5,14]
-  , mathGroupFromList '+' 14 [6,7,8]
+    mathGroupFromList '*' 1260 [0,1,2,10]
+  , mathGroupFromList '+' 3    [3,4]
+  , mathGroupFromList '*' 12   [5,6]
+  , mathGroupFromList '+' 14   [7,8]
+  , mathGroupFromList '-' 8    [9,18]
+  , mathGroupFromList '+' 3    [11,20]
+  , mathGroupFromList '-' 3    [12, 21]
+  , mathGroupFromList '-' 1    [13,22]
+  , mathGroupFromList '+' 16   [14,23,24]
+  , mathGroupFromList '*' 80   [15,16,25]
+  , mathGroupFromList '-' 2    [17,26]
+  , mathGroupFromList '*' 1344 [19, 27, 28, 29]
+  , mathGroupFromList '+' 20   [30, 38, 39]
+  , mathGroupFromList '+' 10   [31, 40, 49]
+  , mathGroupFromList '-' 8    [32, 33]
+  , mathGroupFromList '+' 5    [34, 35]
+  , mathGroupFromList '/' 2    [36,37]
+  , mathGroupFromList '+' 17   [41, 42, 50]
+--  , mathGroupFromList '*' 63   [43, 44]
+  , mathGroupFromList '*' 15   [45, 46]
+  , mathGroupFromList '+' 10   [47, 48]
+  , mathGroupFromList '+' 18   [51, 52, 53, 61]
+  , mathGroupFromList '+' 14   [54, 63]
+  , mathGroupFromList '*' 18   [55, 64, 65]
+  , mathGroupFromList '-' 2    [56, 57]
+  , mathGroupFromList '+' 19   [58, 66, 67]
+  , mathGroupFromList '-' 4    [59, 68]
+  , mathGroupFromList '+' 9    [60, 69]
+  , mathGroupFromList '+' 5    [62, 71]
+  , mathGroupFromList '+' 24   [70, 78, 79, 80]
+  , mathGroupFromList '-' 3    [72, 73]
+--  , mathGroupFromList '+' 7    [74, 75]
+  , mathGroupFromList '*' 14   [76, 77]
   ]
 testKK = BoardKK testBoardKK1 testMGKK1
 
-(testBoardKK2,testMGKK2) =  applyGuessWithMathGroup3 0 testBoardKK1 (head testMGKK1) 3
+-- (testBoardKK2,testMGKK2) =  applyGuessWithMathGroup3 0 testBoardKK1 (head testMGKK1) 3
+BoardKK lastBoard lastGroups = tryToSolve testKK
+firstGuess = head $ makeGuessBoards $ BoardKK lastBoard lastGroups
+betterGuess = initialReduceFromKnown firstGuess
+beforeBug =  updateBoardUsingAllHouses $ updateBoardUsingAllMathGroups betterGuess
+-- try to call updateBoardUsingAllMathGroups beforebug
