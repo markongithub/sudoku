@@ -523,7 +523,7 @@ testMGKK1 = [
   , mathGroupFromList '+' 5    [34, 35]
   , mathGroupFromList '/' 2    [36,37]
   , mathGroupFromList '+' 17   [41, 42, 50]
---  , mathGroupFromList '*' 63   [43, 44]
+  , mathGroupFromList '*' 63   [43, 44]
   , mathGroupFromList '*' 15   [45, 46]
   , mathGroupFromList '+' 10   [47, 48]
   , mathGroupFromList '+' 18   [51, 52, 53, 61]
@@ -536,7 +536,7 @@ testMGKK1 = [
   , mathGroupFromList '+' 5    [62, 71]
   , mathGroupFromList '+' 24   [70, 78, 79, 80]
   , mathGroupFromList '-' 3    [72, 73]
---  , mathGroupFromList '+' 7    [74, 75]
+  , mathGroupFromList '+' 7    [74, 75]
   , mathGroupFromList '*' 14   [76, 77]
   ]
 testKK = BoardKK testBoardKK1 testMGKK1
