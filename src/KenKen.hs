@@ -493,11 +493,13 @@ reduceGroupWithIndexValue2 :: Index -> Possibility -> MathGroup -> (Index, Squar
 reduceGroupWithIndexValue2 i value (MathGroup op total s) = let
   lastIndex :: Index
   lastIndex = if ((Set.size s /= 2) || (Set.notMember i s)) then error "you fucked up reduceGroupWithIndexValue2" else Set.findMin $ Set.delete i s
+  divCandidates = [(total `mod` value == 0, total `div` value), (value `mod` total == 0, value `div` total)]
+  correctDivGuesses =  map snd $ filter fst divCandidates
   rawValues = case op of
       '+' -> [total - value]
       '-' -> [value - total, value + total]
       '*' -> if (total `mod` value == 0) then [total `div` value] else []
-      '/' -> if (total `mod` value == 0) then [total * value, total `div` value] else  [total * value]
+      '/' -> correctDivGuesses
       _   -> error ("I did not expect operation " ++ show op)
   seriousValues = filter (\x -> (x >= 0) && (x <=9)) rawValues
   in (lastIndex, Possibilities (Set.fromList seriousValues))
