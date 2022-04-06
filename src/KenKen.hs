@@ -177,19 +177,21 @@ reduceFromKnownSquare (BoardKK b gs) i = let
 groupContainsIndex ::  Index -> MathGroup -> Bool
 groupContainsIndex i (MathGroup _ _ is) = Set.member i is
 
-sizeOver2 :: MathGroup -> Bool
-sizeOver2 (MathGroup _ _ s) = Set.size s > 2
-
 fixMathGroupsFromKnown :: BoardKK -> Index -> Possibility -> BoardKK
 fixMathGroupsFromKnown (BoardKK board mgs) i v = let
   (relevantMGs, otherMGs) = partition (groupContainsIndex i) mgs
-  -- reduceGroupWithIndexValue ::  Index -> Possibility -> MathGroup -> Maybe MathGroup
-  (bigRelevantMGs, smallRelevantMGs) = partition sizeOver2 relevantMGs
-  newMGs = map (reduceGroupWithIndexValueKnown i v) bigRelevantMGs
-  allUpdates = map (reduceGroupWithIndexValue2 i v) smallRelevantMGs
-  allMGsNew = newMGs ++ otherMGs
-  newBoard = board//allUpdates
-  in BoardKK newBoard allMGsNew  
+  onlyRelevantMG = if (length relevantMGs == 1) then head relevantMGs else error ("why is there more than one MG for an index? " ++ show (length relevantMGs, relevantMGs))
+  newMGIfNecessary = reduceGroupWithIndexValueKnown i v onlyRelevantMG
+  updatesIfNecessary = [reduceGroupWithIndexValue2 i v onlyRelevantMG]
+  newBoardIfNecessary = board//updatesIfNecessary
+  indexCount = Set.size $ getIndices onlyRelevantMG
+  (nextBoard, nextMGs)
+    | null relevantMGs = (board, mgs)
+    | indexCount == 0  = error "why are there no indices in this MG"
+    | indexCount == 1  = (board, otherMGs) -- just get rid of the current one
+    | indexCount == 2  = (newBoardIfNecessary, otherMGs)
+    | otherwise        = (board, newMGIfNecessary:otherMGs)
+  in BoardKK nextBoard nextMGs  
 
 eliminateFromIndices :: Board -> Possibility -> [Index] -> Board
 eliminateFromIndices board possibility indices = let
@@ -430,7 +432,7 @@ applyGuessWithMathGroup2 i board mg v = let
 
 possibilitiesForMathGroup :: Board -> MathGroup -> Map Index (Set Possibility)
 possibilitiesForMathGroup board mg = let
-  MathGroup _ _ groupIndices = mg
+  MathGroup op total groupIndices = mg
   i = Set.findMin groupIndices
   guesses :: [Possibility]
   guesses = case board!i of
@@ -449,7 +451,10 @@ possibilitiesForMathGroup board mg = let
   legitMaps = map snd legitOutcomes
   legitGuesses = Set.fromList $ map fst legitOutcomes
   unionMap = Map.unionsWith Set.union legitMaps
-  in Map.insert i legitGuesses unionMap
+  guessMap = Map.insert i legitGuesses unionMap
+  givenMap = Map.singleton i (Set.singleton total)
+  isGiven = op == '1'
+  in if isGiven then givenMap else guessMap
 
 hasPossibilities :: (Ord a, Ord b) => Map a (Set b) -> Bool
 hasPossibilities m = case Map.elems m of
@@ -467,7 +472,9 @@ hasPossibilities m = case Map.elems m of
 -- 
 -- 
 
-data MathGroup = MathGroup Char Int (Set Index) deriving (Eq, Ord, Show)
+data MathGroup = MathGroup { getOperation :: Char
+                           , getTotal :: Int
+                           , getIndices :: Set Index } deriving (Eq, Ord, Show)
 mathGroupFromList :: Char -> Int -> [Index] -> MathGroup
 mathGroupFromList c t is = MathGroup c t (Set.fromList is)
 
@@ -508,7 +515,10 @@ reduceGroupWithIndexValue2 i value (MathGroup op total s) = let
 testBoardKK1 = parseBoard "000000000000000000000000000000000000000000000000000000000000000000000000000000000"
 testMGKK1 = [
     mathGroupFromList '*' 1260 [0,1,2,10]
-  , mathGroupFromList '+' 3    [3,4]
+--  , mathGroupFromList '+' 3    [3,4]
+-- try specifying these squares as "givens" to test given functionality
+  , mathGroupFromList '1' 2    [3]
+  , mathGroupFromList '1' 1    [4]
   , mathGroupFromList '*' 12   [5,6]
   , mathGroupFromList '+' 14   [7,8]
   , mathGroupFromList '-' 8    [9,18]
