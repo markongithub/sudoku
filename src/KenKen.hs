@@ -8,6 +8,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
+import qualified KenKenDecoder as KenKenDecoder
 
 data Square = Known Int | Possibilities (Set Int) deriving (Eq, Show)
 allPossibilities :: Set Int
@@ -500,7 +501,7 @@ reduceGroupWithIndexValue2 :: Index -> Possibility -> MathGroup -> (Index, Squar
 reduceGroupWithIndexValue2 i value (MathGroup op total s) = let
   lastIndex :: Index
   lastIndex = if ((Set.size s /= 2) || (Set.notMember i s)) then error "you fucked up reduceGroupWithIndexValue2" else Set.findMin $ Set.delete i s
-  divCandidates = [(total `mod` value == 0, total `div` value), (value `mod` total == 0, value `div` total)]
+  divCandidates = [(total `mod` value == 0, total `div` value), (value `mod` total == 0, value `div` total), (True, value * total)]
   correctDivGuesses =  map snd $ filter fst divCandidates
   rawValues = case op of
       '+' -> [total - value]
@@ -557,5 +558,12 @@ testKK = BoardKK testBoardKK1 testMGKK1
 BoardKK lastBoard lastGroups = tryToSolve testKK
 firstGuess = head $ makeGuessBoards $ BoardKK lastBoard lastGroups
 betterGuess = initialReduceFromKnown firstGuess
-beforeBug =  updateBoardUsingAllHouses $ updateBoardUsingAllMathGroups betterGuess
--- try to call updateBoardUsingAllMathGroups beforebug
+
+emptyBoard = parseBoard (take 81 $ repeat '0')
+boardFromDecoder :: [(Char, Int, Set Index)] -> BoardKK
+boardFromDecoder gs = let
+  tripleToMG (op, total, indices) = MathGroup op total indices
+  mgs = map tripleToMG gs
+  in BoardKK emptyBoard mgs
+
+beforeBug = initialReduceFromKnown  $ boardFromDecoder KenKenDecoder.puzzle37665Export
